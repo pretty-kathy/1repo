@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deployment
+  labels:
+    name: app
+spec:
+  selector:
+    matchLabels:
+      name: app
+  template:
+    metadata:
+      labels:
+        name: app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+        resources:
+         limits:
+          cpu: "1" # не сказано о том, сколько максимум может потреблять приложение
+          memory: "128Mi"
+         requests:
+          cpu: "0.1"
+          memory: "128M" # если по памяти все ровно, не вижу смысла устанавливать большие лимиты
+      startupProbe:  # т.к. на инициализацию требуется минимум 5 сек, failureThreshold выставляю в 2, чтобы речекнуть через 5 сек на случай, если приложение потребует 10 сек, и еще 1 речек на случай, если заняло чуть больше 10 сек   
+      httpGet:
+       path: /
+       port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 2
+
+# Не знаю, можно ли в самом деплойменте описывать скейлинг подов, но для регулирования день/ночь, вероятно, можно использовать HorizontalPodAutoscaler
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app-deployment
+  minReplicas: 2 # Вероятно, 2 будет оптимально на случай, если с одной что-то произойдет, вторая продолжит принимать запросы
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 0.2 # из расчета, что в нормальных условиях потребление = 0.1, все, что сверх - выходит за рамки нормы
